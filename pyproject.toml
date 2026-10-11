@@ -1,7 +1,7 @@
 [project]
 name = "hylde"
-version = "0.1.0"
-description = "MCP-server til Claude: vælg model pr. kald (lokal, billig, bedst)."
+version = "0.2.0"
+description = "Lokal app og MCP-server: vælg model pr. kald (lokal, billig, bedst)."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 hylde = "hylde.__main__:main"
+hylde-mcp = "hylde.__main__:main_mcp"
 hylde-refresh = "hylde.refresh:main"
 
 [dependency-groups]
@@ -31,6 +32,7 @@ packages = ["src/hylde"]
 [tool.hatch.build.targets.wheel.force-include]
 "src/hylde/data/table.json" = "hylde/data/table.json"
 "src/hylde/data/prompts.json" = "hylde/data/prompts.json"
+"src/hylde/panel.html" = "hylde/panel.html"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

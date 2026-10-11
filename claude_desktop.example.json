@@ -1,11 +1,8 @@
 {
   "mcpServers": {
     "hylde": {
-      "command": "uv",
-      "args": ["run", "--directory", "/ABSOLUTE/STI/TIL/hylde", "python", "-m", "hylde"],
-      "env": {
-        "HYLDE_LOCAL_BASE_URL": "http://127.0.0.1:11434/v1"
-      }
+      "type": "http",
+      "url": "http://127.0.0.1:8766/mcp"
     }
   }
 }

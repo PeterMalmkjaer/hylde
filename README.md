@@ -28,38 +28,32 @@ Krav: Python 3.12, [uv](https://docs.astral.sh/uv/), Claude Desktop eller Claude
 ```bash
 cd hylde
 uv sync --group dev
-uv run pytest
+uv run hylde
 ```
 
-Nøgler og den lokale adresse ligger i `~/.hylde/.env` (ikke i git):
+Appen åbner i browseren på `http://127.0.0.1:8765`. Der kan du:
+
+1. Vælge Ollama eller llama.cpp og skrive modelnavnet.
+2. Indsætte Anthropic- og OpenAI-nøglen. Tomt felt beholder den gamle. Hylde viser ikke nøglen igen.
+3. Trykke **Start**. Lampen bliver grøn.
+4. Kopiere Claude-konfigurationen fra appen ind i Claude Desktop og genstarte Claude.
+
+Sig derefter: "Kør health på Hylde." Du skal se om den lokale model er oppe, og om nøglerne er **sat**.
+
+Nøglerne gemmes i `~/.hylde/.env` med rettigheder kun til dig. Start bruger den fil, ikke en nøgle der tilfældigvis ligger i terminalen.
+
+Prøvekørsel i appen kalder ingen modeller. Slå den fra, når du vil have rigtige svar.
+
+Lokal model, hvis den ikke allerede kører:
 
 ```bash
-mkdir -p ~/.hylde
-cp .env.example ~/.hylde/.env
-# redigér filen
-```
-
-Lokal model (én af de to):
-
-```bash
-# Ollama
 ollama serve
 ollama pull qwen2.5-coder:7b
-
-# eller llama-server, OpenAI-kompatibel
-# HYLDE_LOCAL_BASE_URL=http://127.0.0.1:8080/v1
 ```
 
-Claude Desktop, macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`.  
-Brug `claude_desktop.example.json` og ret stien. Genstart Claude.
+llama.cpp vælges i appen. Den lytter typisk på `http://127.0.0.1:8080/v1`.
 
-Tjek:
-
-```text
-Kør health på Hylde.
-```
-
-Du skal se om den lokale server er oppe, og om nøgler er **sat** — ikke selve nøglerne.
+Vil du ikke have appen kørende, kan Claude selv starte serveren. Se `claude_desktop.stdio.example.json`. Kommandoen er `python -m hylde --mcp`. Den læser den samme fil.
 
 ## Skill
 
@@ -74,7 +68,7 @@ Uden skillen har Claude værktøjerne, men gætter oftere. Skillen siger: svar s
 
 ## PyCharm
 
-File → Open → denne mappe. Interpreter: `.venv` (uv laver den ved `uv sync`). Kør konfiguration: modul `hylde`.
+File → Open → denne mappe. Interpreter: `.venv` (uv laver den ved `uv sync`). Kør konfiguration: modul `hylde`. Det åbner appen. Modul `hylde` med parameter `--mcp` er serveren uden vindue.
 
 ## Docker
 
@@ -112,7 +106,7 @@ uv run pytest
 
 ## Sikkerhed
 
-- Nøgler kun i `~/.hylde/.env` eller Claudes mcp-`env`. Aldrig i prompten.
+- Nøgler skrives i appen. De ligger i `~/.hylde/.env`, ikke i chatten.
 - Tekst der ligner en API-nøgle bliver ikke sendt til cloud.
 - `privat` sender kun til den lokale server. Hvis den er nede, stopper Hylde — den falder ikke tilbage til GPT.
 - Audit i `~/.hylde/audit.ndjson` gemmer ikke prompten på private kald og aldrig nøgler.

@@ -1,11 +1,18 @@
 # Arkitektur
 
-Hylde er én proces. Claude taler stdio. Alt der kan fejle, må fejle uden at tage chatten med.
+Appen (`hylde`) er et lokalt vindue på `127.0.0.1`. Den gemmer valg i `~/.hylde/.env` og starter MCP-processen med Start. Claude taler HTTP til den proces, eller stdio hvis Claude selv starter `hylde --mcp`. Nøgler sendes ikke tilbage til browseren.
 
 ```
-Claude
-  │  ask | route | second_opinion | health
-  ▼
+Browser 127.0.0.1:8765     Start / Stop / formular
+        │
+        ▼
+panel.py  →  ~/.hylde/.env
+        │
+        ▼
+hylde --mcp-http 127.0.0.1:8766
+        │
+Claude  │  ask | route | second_opinion | health
+        ▼
 server.py          instruktion + værktøjer
   ▼
 service.py         loft, fallback, audit

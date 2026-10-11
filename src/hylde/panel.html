@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hylde</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3efe6;
+      --ink: #1d1a16;
+      --muted: #5e584e;
+      --card: #fffdf8;
+      --line: #e4d9c8;
+      --green: #1d6b45;
+      --green-ink: #f4fff8;
+      --red: #8d3b32;
+      --amber: #8a5a12;
+      --shadow: 0 1px 0 rgba(29, 26, 22, 0.04);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 17px/1.45 "Segoe UI", system-ui, sans-serif;
+    }
+    main { max-width: 40rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+    header { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+    h1 { font-size: 2rem; line-height: 1.1; margin: 0.15rem 0; letter-spacing: -0.03em; }
+    h2 { font-size: 1.05rem; margin: 0 0 0.75rem; }
+    p { margin: 0.4rem 0; }
+    .lede, .hint, .eyebrow { color: var(--muted); }
+    .eyebrow { font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; margin: 0; }
+    .lamp {
+      margin: 0;
+      padding: 0.35rem 0.7rem;
+      border-radius: 999px;
+      background: #ece4d6;
+      font-size: 0.92rem;
+      white-space: nowrap;
+    }
+    .lamp.on { background: var(--green); color: var(--green-ink); }
+    .actions, .row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+    .actions { margin: 1.25rem 0; }
+    button, .choice {
+      font: inherit;
+      border-radius: 0.7rem;
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--ink);
+      padding: 0.55rem 0.9rem;
+      cursor: pointer;
+    }
+    button.primary { background: var(--green); color: var(--green-ink); border-color: var(--green); }
+    button.danger { color: var(--red); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+    #banner {
+      min-height: 1.4rem;
+      margin: 0 0 1rem;
+      color: var(--amber);
+    }
+    #banner.bad { color: var(--red); }
+    section {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 1rem;
+      padding: 1rem 1rem 1.1rem;
+      margin: 0 0 0.9rem;
+      box-shadow: var(--shadow);
+    }
+    label { display: block; font-weight: 600; margin: 0.85rem 0 0.3rem; }
+    .field-head { display: flex; justify-content: space-between; gap: 0.5rem; align-items: baseline; }
+    .badge { font-size: 0.82rem; font-weight: 600; color: var(--green); }
+    .badge.warn { color: var(--amber); }
+    input[type="password"], input[type="text"], input[type="number"] {
+      width: 100%;
+      font: inherit;
+      padding: 0.55rem 0.7rem;
+      border-radius: 0.7rem;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+    .choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.45rem; margin-top: 0.4rem; }
+    .choice { text-align: center; }
+    .choice input { position: absolute; opacity: 0; pointer-events: none; }
+    .choice:has(input:checked) { border-color: var(--green); box-shadow: inset 0 0 0 1px var(--green); }
+    .check { display: flex; gap: 0.55rem; align-items: flex-start; font-weight: 500; margin-top: 0.8rem; }
+    .check input { margin-top: 0.25rem; }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #f7f1e6;
+      border-radius: 0.7rem;
+      padding: 0.75rem;
+      font-size: 0.86rem;
+    }
+    details { margin-top: 0.4rem; }
+    summary { cursor: pointer; color: var(--muted); }
+    #health, #log { white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 0.86rem; }
+    @media (max-width: 640px) { .choices { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <p class="eyebrow">På denne maskine</p>
+      <h1>Hylde</h1>
+      <p class="lede">Start serveren, læg nøglerne her, og lad Claude vælge en billig model til det nemme og en dyrere til det svære.</p>
+    </div>
+    <p class="lamp" id="lamp">Stoppet</p>
+  </header>
+
+  <div class="actions">
+    <button class="primary" id="start" type="button">Start</button>
+    <button class="danger" id="stop" type="button">Stop</button>
+    <button id="restart" type="button" hidden>Genstart</button>
+  </div>
+  <p id="banner" role="alert"></p>
+
+  <section>
+    <h2>Claude</h2>
+    <p class="hint">Hylde skal være startet, før Claude kan bruge den. Genstart Claude, første gang du sætter adressen ind.</p>
+    <p><strong id="url">http://127.0.0.1:8766/mcp</strong></p>
+    <div class="row">
+      <button type="button" id="copy-url">Kopiér adresse</button>
+      <button type="button" id="copy-json">Kopiér Claude-konfiguration</button>
+    </div>
+    <pre id="json"></pre>
+  </section>
+
+  <form id="form">
+    <section>
+      <h2>Nøgler</h2>
+      <p class="hint">Tomt felt beholder den gemte nøgle. Hylde viser aldrig selve nøglen igen.</p>
+
+      <div class="field-head">
+        <label for="anthropic_api_key">Anthropic</label>
+        <span class="badge" id="anthropic_badge"></span>
+      </div>
+      <input id="anthropic_api_key" name="anthropic_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…">
+      <p class="hint">Haiku, Sonnet og Opus. Uden den kan de hylder ikke bruges.</p>
+      <label class="check"><input id="anthropic_api_key_clear" type="checkbox"> Fjern den gemte Anthropic-nøgle</label>
+
+      <div class="field-head">
+        <label for="openai_api_key">OpenAI</label>
+        <span class="badge" id="openai_badge"></span>
+      </div>
+      <input id="openai_api_key" name="openai_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…">
+      <p class="hint">nano og mini er de billige. GPT er den dyre.</p>
+      <label class="check"><input id="openai_api_key_clear" type="checkbox"> Fjern den gemte OpenAI-nøgle</label>
+
+      <div class="field-head">
+        <label for="openrouter_api_key">OpenRouter, valgfri</label>
+        <span class="badge" id="openrouter_badge"></span>
+      </div>
+      <input id="openrouter_api_key" name="openrouter_api_key" type="password" autocomplete="off" spellcheck="false">
+      <p class="hint">Bruges kun, når du henter forbrugstal. Ikke ved hvert spørgsmål.</p>
+      <label class="check"><input id="openrouter_api_key_clear" type="checkbox"> Fjern den gemte OpenRouter-nøgle</label>
+    </section>
+
+    <section>
+      <h2>Lokal model</h2>
+      <p class="hint">Gratis og privat. Vælg den server du allerede har kørende.</p>
+      <div class="choices">
+        <label class="choice"><input type="radio" name="local_kind" value="ollama" checked> Ollama</label>
+        <label class="choice"><input type="radio" name="local_kind" value="llama"> llama.cpp</label>
+        <label class="choice"><input type="radio" name="local_kind" value="custom"> Egen adresse</label>
+      </div>
+      <label for="local_base_url">Adresse</label>
+      <input id="local_base_url" name="local_base_url" type="text" autocomplete="off" spellcheck="false" value="http://127.0.0.1:11434/v1">
+      <label for="local_model">Modelnavn</label>
+      <input id="local_model" name="local_model" type="text" autocomplete="off" spellcheck="false" placeholder="qwen2.5-coder:7b">
+      <p class="hint">Tomt felt bruger qwen2.5-coder:7b. Skift det, når du har hentet en anden model.</p>
+    </section>
+
+    <section>
+      <h2>Valg</h2>
+      <label class="check"><input id="dry_run" name="dry_run" type="checkbox"> Prøvekørsel: kald ingen modeller, og brug ingen penge</label>
+      <p class="hint">God til at se, hvilken hylde Hylde ville vælge. Slå den fra, når du vil have rigtige svar.</p>
+      <details>
+        <summary>Flere valg</summary>
+        <label for="mcp_port">Port som Claude forbinder til</label>
+        <input id="mcp_port" name="mcp_port" type="number" min="1024" max="65535" value="8766">
+        <div class="field-head">
+          <label for="local_api_key">Nøgle til den lokale server</label>
+          <span class="badge" id="local_api_badge"></span>
+        </div>
+        <input id="local_api_key" name="local_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="ollama">
+        <p class="hint">Ollama behøver ingen. llama.cpp bruger ofte heller ingen.</p>
+        <label class="check"><input id="local_api_key_clear" type="checkbox"> Nulstil den lokale nøgle</label>
+      </details>
+    </section>
+
+    <div class="actions">
+      <button class="primary" id="save" type="submit">Gem indstillinger</button>
+    </div>
+  </form>
+
+  <section>
+    <h2>Status</h2>
+    <div id="health">Henter…</div>
+  </section>
+  <section>
+    <h2>Log</h2>
+    <div id="log" class="hint">Tom, indtil du har startet.</div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const banner = $("banner");
+let mcpUrl = "http://127.0.0.1:8766/mcp";
+let filled = false;
+
+function say(text, bad) {
+  banner.textContent = text || "";
+  banner.className = bad ? "bad" : "";
+}
+
+function badge(id, settings, key) {
+  const el = $(id);
+  const env = settings[key + "_in_environment"];
+  if (key === "local_api") {
+    el.textContent = settings.local_api_key_set ? "Gemt" : "";
+    el.className = "badge";
+    return;
+  }
+  if (key === "openrouter" && !settings.openrouter_set && !env) {
+    el.textContent = "Valgfri";
+    el.className = "badge";
+    return;
+  }
+  if (settings[key + "_set"]) {
+    el.textContent = "Gemt";
+    el.className = "badge";
+  } else if (env) {
+    el.textContent = "Ligger i terminalen, ikke her";
+    el.className = "badge warn";
+  } else {
+    el.textContent = "Mangler";
+    el.className = "badge warn";
+  }
+}
+
+function applyStatus(data) {
+  mcpUrl = data.mcp_url;
+  $("url").textContent = data.mcp_url;
+  $("json").textContent = JSON.stringify({ mcpServers: { hylde: { type: "http", url: data.mcp_url } } }, null, 2);
+  const on = Boolean(data.running);
+  $("lamp").textContent = on ? "Kører" : "Stoppet";
+  $("lamp").className = on ? "lamp on" : "lamp";
+  $("start").disabled = on;
+  $("stop").disabled = !on;
+  $("restart").hidden = !on;
+  $("health").textContent = data.health || "";
+  $("log").textContent = data.log || "Tom, indtil du har startet.";
+}
+
+function fillForm(settings) {
+  const kind = settings.local_kind || "ollama";
+  document.querySelectorAll('input[name="local_kind"]').forEach((input) => {
+    input.checked = input.value === kind;
+  });
+  $("local_base_url").value = settings.local_base_url || "";
+  $("local_model").value = settings.local_model || "";
+  $("dry_run").checked = Boolean(settings.dry_run);
+  $("mcp_port").value = String(settings.mcp_port || 8766);
+  syncAddress();
+  badge("anthropic_badge", settings, "anthropic");
+  badge("openai_badge", settings, "openai");
+  badge("openrouter_badge", settings, "openrouter");
+  badge("local_api_badge", settings, "local_api");
+}
+
+function syncAddress() {
+  const kind = document.querySelector('input[name="local_kind"]:checked').value;
+  const field = $("local_base_url");
+  field.disabled = kind !== "custom";
+  if (kind === "ollama") field.value = "http://127.0.0.1:11434/v1";
+  if (kind === "llama") field.value = "http://127.0.0.1:8080/v1";
+}
+
+function payload() {
+  const kind = document.querySelector('input[name="local_kind"]:checked').value;
+  return {
+    anthropic_api_key: $("anthropic_api_key").value,
+    anthropic_api_key_clear: $("anthropic_api_key_clear").checked,
+    openai_api_key: $("openai_api_key").value,
+    openai_api_key_clear: $("openai_api_key_clear").checked,
+    openrouter_api_key: $("openrouter_api_key").value,
+    openrouter_api_key_clear: $("openrouter_api_key_clear").checked,
+    local_kind: kind,
+    local_base_url: $("local_base_url").value,
+    local_model: $("local_model").value,
+    local_api_key: $("local_api_key").value,
+    local_api_key_clear: $("local_api_key_clear").checked,
+    dry_run: $("dry_run").checked,
+    mcp_port: Number($("mcp_port").value)
+  };
+}
+
+function clearSecrets() {
+  ["anthropic_api_key", "openai_api_key", "openrouter_api_key", "local_api_key"].forEach((id) => {
+    $(id).value = "";
+  });
+  document.querySelectorAll('input[type="checkbox"]').forEach((box) => {
+    if (box.id !== "dry_run") box.checked = false;
+  });
+}
+
+async function post(path, body) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? "{}" : JSON.stringify(body)
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Det virkede ikke.");
+  return data;
+}
+
+async function refresh() {
+  const response = await fetch("/api/state");
+  const data = await response.json();
+  applyStatus(data);
+  if (!filled) {
+    fillForm(data.settings);
+    filled = true;
+  } else {
+    badge("anthropic_badge", data.settings, "anthropic");
+    badge("openai_badge", data.settings, "openai");
+    badge("openrouter_badge", data.settings, "openrouter");
+    badge("local_api_badge", data.settings, "local_api");
+  }
+}
+
+async function save() {
+  const data = await post("/api/settings", payload());
+  fillForm(data.settings);
+  clearSecrets();
+  say(data.running ? "Gemt. Tryk Genstart, så de nye indstillinger bruges." : "Gemt.");
+  return data;
+}
+
+$("form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  save().then(refresh).catch((error) => say(error.message, true));
+});
+document.querySelectorAll('input[name="local_kind"]').forEach((input) => {
+  input.addEventListener("change", syncAddress);
+});
+$("start").addEventListener("click", () => {
+  say("Starter…");
+  save()
+    .then(() => post("/api/start"))
+    .then((data) => { applyStatus(data); say("Kører. Claude kan bruge adressen ovenfor."); })
+    .catch((error) => say(error.message, true));
+});
+$("stop").addEventListener("click", () => {
+  post("/api/stop")
+    .then((data) => { applyStatus(data); say("Stoppet."); })
+    .catch((error) => say(error.message, true));
+});
+$("restart").addEventListener("click", () => {
+  say("Genstarter…");
+  save()
+    .then(() => post("/api/restart"))
+    .then((data) => { applyStatus(data); say("Genstartet."); })
+    .catch((error) => say(error.message, true));
+});
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    say("Kopieret.");
+  } catch (error) {
+    say("Kunne ikke kopiere. Markér teksten og kopiér den selv.", true);
+  }
+}
+$("copy-url").addEventListener("click", () => copyText(mcpUrl));
+$("copy-json").addEventListener("click", () => copyText($("json").textContent));
+
+refresh().catch(() => say("Kunne ikke hente status.", true));
+setInterval(() => refresh().catch(() => {}), 4000);
+</script>
+</body>
+</html>
