@@ -1,0 +1,45 @@
+[project]
+name = "hylde"
+version = "0.1.0"
+description = "MCP-server til Claude: vælg model pr. kald (lokal, billig, bedst)."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+authors = [{ name = "Peter Malmkjaer" }]
+dependencies = [
+    "mcp[cli]==2.3.0",
+    "pydantic-settings>=2.15.0",
+]
+
+[project.scripts]
+hylde = "hylde.__main__:main"
+hylde-refresh = "hylde.refresh:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.11",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hylde"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/hylde/data/table.json" = "hylde/data/table.json"
+"src/hylde/data/prompts.json" = "hylde/data/prompts.json"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

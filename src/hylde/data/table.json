@@ -1,0 +1,58 @@
+{
+  "version": "2026-10-11",
+  "shelves": {
+    "local": {
+      "provider": "local",
+      "model": "qwen2.5-coder:7b",
+      "tier": "cheap"
+    },
+    "haiku": {
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5",
+      "tier": "cheap"
+    },
+    "sonnet": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "tier": "mid"
+    },
+    "opus": {
+      "provider": "anthropic",
+      "model": "claude-opus-5",
+      "tier": "frontier"
+    },
+    "nano": {
+      "provider": "openai",
+      "model": "gpt-5.4-nano",
+      "tier": "cheap"
+    },
+    "mini": {
+      "provider": "openai",
+      "model": "gpt-5.4-mini",
+      "tier": "mid"
+    },
+    "gpt": {
+      "provider": "openai",
+      "model": "gpt-6-astra",
+      "tier": "frontier"
+    }
+  },
+  "tasks": {
+    "classify": {"cheap": "local", "balanced": "haiku", "best": "mini"},
+    "extract": {"cheap": "local", "balanced": "nano", "best": "mini"},
+    "draft": {"cheap": "haiku", "balanced": "sonnet", "best": "gpt"},
+    "code": {"cheap": "local", "balanced": "sonnet", "best": "opus"},
+    "review": {"cheap": "mini", "balanced": "sonnet", "best": "gpt"},
+    "reason": {"cheap": "haiku", "balanced": "sonnet", "best": "opus"}
+  },
+  "fallbacks": {
+    "local": ["haiku", "nano"],
+    "haiku": ["nano", "local"],
+    "nano": ["haiku", "local"],
+    "sonnet": ["mini", "gpt"],
+    "mini": ["sonnet", "haiku"],
+    "opus": ["gpt", "sonnet"],
+    "gpt": ["opus", "mini"]
+  },
+  "dialogue": {"left": "sonnet", "right": "gpt"}
+}

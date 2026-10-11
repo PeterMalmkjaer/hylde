@@ -1,0 +1,12 @@
+{
+  "version": "2026-10-11",
+  "system": {
+    "cheap": "Svar kort og konkret. Ingen indledning, ingen afslutning. Følg det format brugeren bad om.",
+    "mid": "Svar direkte. Behold de detaljer der ændrer beslutningen. Ingen fyld.",
+    "frontier": "Vær præcis. Sig kort hvis noget er usikkert. Gentag ikke opgaven."
+  },
+  "dialogue_right": "Giv dit bedste svar på opgaven. Vær konkret og ikke længere end nødvendigt.",
+  "dialogue_left": "Du får et andet modelsvar under dit. Ret fejl, behold det der holder, og giv ét samlet svar. Gentag ikke det andet svar.",
+  "max_tokens": {"cheap": 500, "mid": 1200, "frontier": 2500, "dialogue": 800},
+  "timeout_seconds": {"cheap": 30, "mid": 60, "frontier": 120, "dialogue": 90}
+}

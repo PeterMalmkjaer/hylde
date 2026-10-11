@@ -1,0 +1,22 @@
+# MCP over stdio er lettest som `docker run -i` (se README).
+# Compose her er kun til at bygge image og holde data-volume.
+services:
+  hylde:
+    build: .
+    image: hylde:local
+    env_file:
+      - path: ${HOME}/.hylde/.env
+        required: false
+    environment:
+      HYLDE_DATA_DIR: /data
+      HYLDE_LOCAL_BASE_URL: http://host.docker.internal:11434/v1
+    volumes:
+      - hylde-data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    mem_limit: 512m
+    stdin_open: true
+    tty: false
+
+volumes:
+  hylde-data:
