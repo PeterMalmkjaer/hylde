@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import os
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
 from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_init_only: ContextVar[bool] = ContextVar("hylde_settings_init_only", default=False)
+
 
 def default_data_dir() -> Path:
+    raw = os.environ.get("HYLDE_DATA_DIR", "").strip()
+    if raw:
+        return Path(raw).expanduser()
     return Path.home() / ".hylde"
 
 
@@ -58,6 +64,8 @@ class Settings(BaseSettings):
         dotenv_settings: Any,
         file_secret_settings: Any,
     ) -> tuple[Any, ...]:
+        if _init_only.get():
+            return (init_settings,)
         if os.environ.get("HYLDE_DISABLE_DOTENV") == "1":
             return (init_settings, env_settings)
         return (init_settings, env_settings, dotenv_settings)
@@ -67,3 +75,12 @@ class Settings(BaseSettings):
             return None
         text = value.get_secret_value().strip()
         return text or None
+
+
+def settings_from_file(data_dir: Path, **values: Any) -> Settings:
+    """Byg indstillinger kun ud fra de værdier, appen har gemt."""
+    token = _init_only.set(True)
+    try:
+        return Settings(data_dir=data_dir, **values)
+    finally:
+        _init_only.reset(token)

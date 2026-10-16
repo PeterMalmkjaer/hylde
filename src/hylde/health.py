@@ -18,6 +18,6 @@ async def health_report(settings: Settings, catalog: Catalog, transport: Transpo
         f"openai nøgle: {'sat' if settings.secret(settings.openai_api_key) else 'mangler'}",
         f"openrouter nøgle: {'sat' if settings.secret(settings.openrouter_api_key) else 'mangler'}",
         f"dry-run: {'ja' if settings.dry_run else 'nej'}",
-        "Nøglerne vises ikke. Mangler en nøgle: læg den i ~/.hylde/.env og genstart Claude.",
+        "Nøglerne vises ikke. Mangler en nøgle: åbn Hylde-appen og gem den der.",
     ]
     return "\n".join(lines)

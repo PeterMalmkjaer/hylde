@@ -35,6 +35,7 @@ Hylder: `local`, `haiku`, `sonnet`, `opus`, `nano`, `mini`, `gpt`.
 ## Hårde regler
 
 - Nøgler, tokens og private keys sendes ikke. Hvis teksten ligner en nøgle, så sig det til brugeren i stedet for at kalde cloud.
+- Bed aldrig om en API-nøgle i chatten. Mangler en nøgle, så sig at den skal ind i Hylde-appen, og at Hylde skal være startet.
 - `privat` vinder over en navngiven cloud-model.
 - `second_opinion` er to betalte frontier-kald. Ikke standard. Ikke til "hej".
 - Sig i svaret **hvilken model** Hylde brugte (feltet `model:`).

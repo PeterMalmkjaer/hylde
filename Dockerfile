@@ -9,4 +9,4 @@ USER hylde
 ENV HYLDE_DATA_DIR=/data \
     HYLDE_LOCAL_BASE_URL=http://host.docker.internal:11434/v1
 VOLUME ["/data"]
-ENTRYPOINT ["python", "-m", "hylde"]
+ENTRYPOINT ["python", "-m", "hylde", "--mcp"]
