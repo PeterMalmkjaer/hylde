@@ -1,10 +1,20 @@
 {
-  "version": "2026-10-11",
+  "version": "2026-10-22",
   "shelves": {
     "local": {
       "provider": "local",
       "model": "qwen2.5-coder:7b",
       "tier": "cheap"
+    },
+    "llama": {
+      "provider": "llama",
+      "model": "local-gguf",
+      "tier": "cheap"
+    },
+    "cloud": {
+      "provider": "ollama_cloud",
+      "model": "gemma4:31b",
+      "tier": "mid"
     },
     "haiku": {
       "provider": "anthropic",
@@ -46,7 +56,8 @@
     "reason": {"cheap": "haiku", "balanced": "sonnet", "best": "opus"}
   },
   "fallbacks": {
-    "local": ["haiku", "nano"],
+    "local": ["llama", "haiku", "nano"],
+    "llama": ["local", "haiku"],
     "haiku": ["nano", "local"],
     "nano": ["haiku", "local"],
     "sonnet": ["mini", "gpt"],

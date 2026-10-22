@@ -11,10 +11,11 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from hylde.envfile import UserError, apply_form, public_view, runtime_settings
 from hylde.health import health_report
-from hylde.providers import HttpxTransport
+from hylde.providers import HttpxTransport, list_installed_models
 from hylde.supervisor import Supervisor, log_tail
 from hylde.table import load_catalog
 
@@ -72,6 +73,11 @@ class Panel:
         view = apply_form(self.env_path, payload)
         return {"settings": view, "running": self.supervisor.running()}
 
+    def models(self, source: str) -> dict[str, object]:
+        if source not in {"ollama", "llama", "cloud"}:
+            raise UserError("Ukendt server.")
+        return list_installed_models(runtime_settings(self.data_dir), source)
+
     def start(self) -> None:
         view = public_view(self.env_path)
         self._reject_same_port({"mcp_port": view["mcp_port"]})
@@ -116,8 +122,16 @@ class Handler(BaseHTTPRequestHandler):
             body = Path(__file__).with_name("panel.html").read_bytes()
             self._bytes(200, body, "text/html; charset=utf-8")
             return
-        if self.path == "/api/state":
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/state":
             self._json(200, self.server.panel.state())
+            return
+        if parsed.path == "/api/models":
+            source = parse_qs(parsed.query).get("source", ["ollama"])[0]
+            try:
+                self._json(200, self.server.panel.models(source))
+            except UserError as exc:
+                self._json(400, {"error": str(exc)})
             return
         if self.path == "/favicon.ico":
             self._bytes(204, b"", "image/x-icon")

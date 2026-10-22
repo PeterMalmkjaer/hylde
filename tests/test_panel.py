@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from hylde.envfile import apply_form, child_env, read_values, runtime_settings
+from hylde.envfile import apply_form, child_env, public_view, read_values, runtime_settings
 from hylde.panel import Panel
 
 
@@ -73,6 +73,10 @@ def test_page_has_start_and_settings(panel) -> None:
     assert "Start" in page
     assert "Gem indstillinger" in page
     assert "Anthropic" in page
+    assert "Ollama Cloud" in page
+    assert "llama.cpp" in page
+    assert 'id="ollama_model"' in page
+    assert "local_kind" not in page
 
 
 def test_state_hides_secrets(panel, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -98,8 +102,9 @@ def test_save_keeps_blank_and_can_clear(panel, tmp_path: Path) -> None:
         "/api/settings",
         {
             "anthropic_api_key": secret,
-            "local_kind": "llama",
-            "local_model": "qwen2.5-coder:7b",
+            "ollama_model": "qwen2.5-coder:7b",
+            "llama_enabled": True,
+            "llama_model": "local-gguf",
             "dry_run": True,
             "mcp_port": 8791,
         },
@@ -108,7 +113,11 @@ def test_save_keeps_blank_and_can_clear(panel, tmp_path: Path) -> None:
     assert secret not in raw.decode("utf-8")
     saved = read_values(tmp_path / ".env")
     assert saved["ANTHROPIC_API_KEY"] == secret
-    assert saved["HYLDE_LOCAL_BASE_URL"] == "http://127.0.0.1:8080/v1"
+    assert saved["HYLDE_LOCAL_BASE_URL"] == "http://127.0.0.1:11434/v1"
+    assert saved["HYLDE_LOCAL_MODEL"] == "qwen2.5-coder:7b"
+    assert saved["HYLDE_LLAMA_ENABLED"] == "1"
+    assert saved["HYLDE_LLAMA_BASE_URL"] == "http://127.0.0.1:8080/v1"
+    assert saved["HYLDE_LLAMA_MODEL"] == "local-gguf"
     assert saved["HYLDE_DRY_RUN"] == "1"
     mode = (tmp_path / ".env").stat().st_mode
     assert mode & stat.S_IRWXG == 0
@@ -118,7 +127,7 @@ def test_save_keeps_blank_and_can_clear(panel, tmp_path: Path) -> None:
         port,
         "POST",
         "/api/settings",
-        {"local_kind": "ollama", "dry_run": False, "mcp_port": 8791},
+        {"dry_run": False, "mcp_port": 8791},
     )
     assert status == 200
     assert read_values(app.env_path)["ANTHROPIC_API_KEY"] == secret
@@ -129,7 +138,6 @@ def test_save_keeps_blank_and_can_clear(panel, tmp_path: Path) -> None:
         "/api/settings",
         {
             "anthropic_api_key_clear": True,
-            "local_kind": "ollama",
             "dry_run": False,
             "mcp_port": 8791,
         },
@@ -146,8 +154,7 @@ def test_rejects_bad_address_and_foreign_host(panel) -> None:
         "POST",
         "/api/settings",
         {
-            "local_kind": "custom",
-            "local_base_url": "file:///tmp/x",
+            "ollama_base_url": "file:///tmp/x",
             "dry_run": False,
             "mcp_port": 8791,
         },
@@ -165,7 +172,7 @@ def test_start_and_stop(panel) -> None:
         port,
         "POST",
         "/api/settings",
-        {"local_kind": "ollama", "dry_run": True, "mcp_port": mcp},
+        {"dry_run": True, "mcp_port": mcp},
     )
     assert status == 200
     status, raw = call(port, "POST", "/api/start")
@@ -197,7 +204,6 @@ def test_child_env_prefers_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
         tmp_path / ".env",
         {
             "anthropic_api_key": "sk-ant-from-file-12345678",
-            "local_kind": "ollama",
             "dry_run": False,
             "mcp_port": 8791,
         },
@@ -213,7 +219,7 @@ def test_child_env_prefers_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 def test_unknown_env_line_is_kept(tmp_path: Path) -> None:
     path = tmp_path / ".env"
     path.write_text("OTHER_TOOL=behold-mig\n", encoding="utf-8")
-    apply_form(path, {"local_kind": "ollama", "dry_run": False, "mcp_port": 8791})
+    apply_form(path, {"dry_run": False, "mcp_port": 8791})
     assert read_values(path)["OTHER_TOOL"] == "behold-mig"
 
 
@@ -225,7 +231,7 @@ def test_http_mcp_lists_tools(tmp_path: Path) -> None:
     port = free_port()
     apply_form(
         tmp_path / ".env",
-        {"local_kind": "ollama", "dry_run": True, "mcp_port": port},
+        {"dry_run": True, "mcp_port": port},
     )
     supervisor = Supervisor(tmp_path)
     supervisor.start(port)
@@ -249,3 +255,90 @@ def test_http_mcp_lists_tools(tmp_path: Path) -> None:
         assert {"ask", "route", "second_opinion", "health"} <= asyncio.run(names())
     finally:
         supervisor.stop()
+
+
+def test_ollama_llama_and_cloud_stay_separate(panel, tmp_path: Path) -> None:
+    _app, port = panel
+    cloud = "ollama-cloud-secret-value"
+    status, raw = call(
+        port,
+        "POST",
+        "/api/settings",
+        {
+            "ollama_model": "qwen2.5-coder:7b",
+            "llama_enabled": True,
+            "llama_base_url": "http://127.0.0.1:8080/v1",
+            "llama_model": "local-gguf",
+            "ollama_cloud_api_key": cloud,
+            "ollama_cloud_model": "gemma4:31b",
+            "dry_run": False,
+            "mcp_port": 8791,
+        },
+    )
+    text = raw.decode("utf-8")
+    assert status == 200
+    assert cloud not in text
+    body = json.loads(text)
+    assert body["settings"]["ollama_cloud_set"] is True
+    assert body["settings"]["llama_enabled"] is True
+    assert body["settings"]["ollama_model"] == "qwen2.5-coder:7b"
+    saved = read_values(tmp_path / ".env")
+    assert saved["OLLAMA_API_KEY"] == cloud
+    assert saved["HYLDE_LOCAL_BASE_URL"] == "http://127.0.0.1:11434/v1"
+    assert saved["HYLDE_LLAMA_BASE_URL"] == "http://127.0.0.1:8080/v1"
+    cfg = runtime_settings(tmp_path)
+    assert cfg.secret(cfg.ollama_cloud_api_key) == cloud
+    assert cfg.llama_model == "local-gguf"
+    assert cfg.local_model == "qwen2.5-coder:7b"
+
+
+def test_legacy_llama_url_becomes_its_own_setting(tmp_path: Path) -> None:
+    path = tmp_path / ".env"
+    path.write_text(
+        "HYLDE_LOCAL_BASE_URL=http://127.0.0.1:8080/v1\nHYLDE_LOCAL_MODEL=old-gguf\n",
+        encoding="utf-8",
+    )
+    view = public_view(path)
+    assert view["llama_enabled"] is True
+    assert view["llama_model"] == "old-gguf"
+    assert view["ollama_base_url"] == "http://127.0.0.1:11434/v1"
+    assert view["ollama_model"] == ""
+    cfg = runtime_settings(tmp_path)
+    assert cfg.llama_enabled is True
+    assert cfg.llama_model == "old-gguf"
+    assert cfg.local_base_url == "http://127.0.0.1:11434/v1"
+    assert cfg.local_model is None
+
+
+def test_model_list_stays_on_this_machine(panel) -> None:
+    _app, port = panel
+    status, _raw = call(
+        port,
+        "POST",
+        "/api/settings",
+        {"ollama_base_url": "http://example.com/v1", "dry_run": False, "mcp_port": 8791},
+    )
+    assert status == 200
+    status, raw = call(port, "GET", "/api/models?source=ollama")
+    body = json.loads(raw)
+    assert status == 200
+    assert body["models"] == []
+    assert "denne maskine" in body["error"]
+    status, raw = call(port, "GET", "/api/models?source=cloud")
+    body = json.loads(raw)
+    assert status == 200
+    assert "nøgle" in body["error"]
+    status, raw = call(port, "GET", "/api/models?source=somewhere")
+    assert status == 400
+
+
+def test_llama_requires_a_model_when_enabled(panel) -> None:
+    _app, port = panel
+    status, raw = call(
+        port,
+        "POST",
+        "/api/settings",
+        {"llama_enabled": True, "dry_run": False, "mcp_port": 8791},
+    )
+    assert status == 400
+    assert "llama.cpp" in raw.decode("utf-8")

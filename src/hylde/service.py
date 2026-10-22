@@ -8,7 +8,16 @@ from hylde.audit import write_audit
 from hylde.config import Settings
 from hylde.heuristics import guess_task
 from hylde.providers import Completion, ProviderError, Transport, complete
-from hylde.router import Choice, RouteError, choose, dialogue_pair, looks_secret
+from hylde.router import (
+    ON_MACHINE,
+    Choice,
+    RouteError,
+    available,
+    choose,
+    dialogue_pair,
+    looks_secret,
+    resolve_model,
+)
 from hylde.table import Catalog, PromptPack, Shelf
 
 PRICE = {"cheap": "lav", "mid": "middel", "frontier": "høj"}
@@ -171,19 +180,18 @@ class Service:
 
     async def _call_chain(self, choice: Choice, *, prompt: str) -> tuple[Completion, Choice]:
         last: ProviderError | None = None
-        keys = (choice.shelf_key,) if choice.pinned or choice.private else choice.chain
+        keys = (choice.shelf_key,) if choice.pinned else choice.chain
         seen: list[str] = []
         for key in keys:
             if key in seen:
                 continue
             seen.append(key)
             shelf = self.catalog.shelves[key]
-            if choice.private and shelf.provider != "local":
+            if choice.private and shelf.provider not in ON_MACHINE:
                 continue
-            if key == "local" and self.settings.local_model:
-                shelf = shelf.model_copy(update={"model": self.settings.local_model})
-            elif key == choice.shelf_key:
-                shelf = choice.shelf
+            if not available(self.settings, shelf):
+                continue
+            shelf = resolve_model(self.settings, key, shelf)
             try:
                 completion = await self._once(
                     shelf,
@@ -193,11 +201,8 @@ class Service:
                 )
             except ProviderError as exc:
                 last = exc
-                if choice.pinned or choice.private or not exc.retryable:
-                    if choice.pinned or choice.private:
-                        raise RouteError(str(exc)) from exc
-                    if not exc.retryable:
-                        continue
+                if choice.pinned:
+                    raise RouteError(str(exc)) from exc
                 continue
             if key != choice.shelf_key:
                 choice = Choice(

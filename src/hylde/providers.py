@@ -1,20 +1,28 @@
-"""Kald til Anthropic, OpenAI og en lokal OpenAI-kompatibel server."""
+"""Kald til Anthropic, OpenAI, Ollama, llama.cpp og Ollama Cloud."""
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Protocol
+from urllib.parse import urlparse
 
 import httpx2
 
 from hylde.config import Settings
+from hylde.envfile import UserError, acceptable_model
 from hylde.table import Shelf
+
+_LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+_CLOUD_TAGS = "https://ollama.com/api/tags"
+_LIST_CAP = 200
 
 
 class ProviderError(Exception):
-    def __init__(self, message: str, *, retryable: bool) -> None:
+    def __init__(self, message: str, *, retryable: bool, code: str = "") -> None:
         super().__init__(message)
         self.retryable = retryable
+        self.code = code
 
 
 @dataclass
@@ -111,14 +119,12 @@ async def complete(
     )
 
 
-async def local_up(transport: Transport, settings: Settings) -> bool:
-    url = settings.local_base_url.rstrip("/") + "/models"
+async def endpoint_up(transport: Transport, base_url: str, api_key: str) -> bool:
+    url = base_url.rstrip("/") + "/models"
     try:
         response = await transport.get(
             url,
-            headers={
-                "Authorization": f"Bearer {settings.secret(settings.local_api_key) or 'ollama'}",
-            },
+            headers={"Authorization": f"Bearer {api_key or 'ollama'}"},
             timeout=3,
         )
     except ProviderError:
@@ -189,21 +195,34 @@ async def _openai_compat(
     if shelf.provider == "local":
         base = settings.local_base_url
         key = settings.secret(settings.local_api_key) or "ollama"
+    elif shelf.provider == "llama":
+        base = settings.llama_base_url
+        key = settings.secret(settings.local_api_key) or "ollama"
+    elif shelf.provider == "ollama_cloud":
+        base = settings.ollama_cloud_base_url
+        key = settings.secret(settings.ollama_cloud_api_key)
+        if not key:
+            raise ProviderError("OLLAMA_API_KEY mangler.", retryable=False)
     else:
         base = settings.openai_base_url
         key = settings.secret(settings.openai_api_key)
         if not key:
             raise ProviderError("OPENAI_API_KEY mangler.", retryable=False)
+    payload: dict[str, object] = {
+        "model": shelf.model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+    }
+    # OpenAI's nyere modeller afviser max_tokens. Ollama og llama.cpp bruger det gamle felt.
+    if shelf.provider == "openai":
+        payload["max_completion_tokens"] = max_tokens
+    else:
+        payload["max_tokens"] = max_tokens
     response = await transport.post(
         base.rstrip("/") + "/chat/completions",
-        json={
-            "model": shelf.model,
-            "max_tokens": max_tokens,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
-            ],
-        },
+        json=payload,
         headers={"Authorization": f"Bearer {key}", "content-type": "application/json"},
         timeout=timeout,
     )
@@ -246,3 +265,117 @@ def _api_message(body: dict[str, object], status: int) -> str:
 
 def _int(value: object) -> int | None:
     return value if isinstance(value, int) else None
+
+
+def tags_url(openai_base: str) -> str:
+    root = openai_base.strip().rstrip("/")
+    if root.endswith("/v1"):
+        root = root[: -len("/v1")]
+    return root + "/api/tags"
+
+
+def parse_model_names(payload: dict[str, object], *, shape: str) -> list[str]:
+    if shape == "ollama":
+        raw = payload.get("models")
+        keys = ("name", "model")
+    else:
+        raw = payload.get("data")
+        keys = ("id", "name")
+    if not isinstance(raw, list):
+        return []
+    names: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = ""
+        for key in keys:
+            value = item.get(key)
+            if isinstance(value, str) and value.strip():
+                name = value.strip()
+                break
+        if not name or name in seen or not acceptable_model(name):
+            continue
+        seen.add(name)
+        names.append(name)
+        if len(names) >= _LIST_CAP:
+            break
+    return names
+
+
+def list_installed_models(settings: Settings, source: str) -> dict[str, object]:
+    if source not in {"ollama", "llama", "cloud"}:
+        raise UserError("Ukendt server.")
+    if source == "cloud":
+        key = settings.secret(settings.ollama_cloud_api_key)
+        if not key:
+            return {
+                "models": [],
+                "error": "Gem først en Ollama Cloud-nøgle. Det er ikke Anthropic-nøglen.",
+            }
+        url = _CLOUD_TAGS
+        headers = {"Authorization": f"Bearer {key}"}
+        shape = "ollama"
+    elif source == "ollama":
+        url = tags_url(settings.local_base_url)
+        blocked = _loopback_error(url)
+        if blocked:
+            return {"models": [], "error": blocked}
+        headers = {"Authorization": f"Bearer {settings.secret(settings.local_api_key) or 'ollama'}"}
+        shape = "ollama"
+    else:
+        url = settings.llama_base_url.rstrip("/") + "/models"
+        blocked = _loopback_error(url)
+        if blocked:
+            return {"models": [], "error": blocked}
+        headers = {"Authorization": f"Bearer {settings.secret(settings.local_api_key) or 'ollama'}"}
+        shape = "openai"
+    try:
+        names = asyncio.run(_fetch_names(url, headers, shape))
+    except ProviderError as exc:
+        if exc.code == "auth" and source == "cloud":
+            return {
+                "models": [],
+                "error": "Ollama Cloud afviste nøglen. Brug nøglen fra ollama.com, ikke Anthropic.",
+            }
+        return {"models": [], "error": _down_message(source)}
+    if not names:
+        return {"models": [], "error": _empty_message(source)}
+    return {"models": names, "error": ""}
+
+
+async def _fetch_names(url: str, headers: dict[str, str], shape: str) -> list[str]:
+    transport = HttpxTransport()
+    try:
+        response = await transport.get(url, headers=headers, timeout=4)
+        if response.status_code in {401, 403}:
+            raise ProviderError("Afvist.", retryable=False, code="auth")
+        if response.status_code >= 400:
+            raise ProviderError("Serveren svarede ikke.", retryable=False)
+        return parse_model_names(_json(response), shape=shape)
+    finally:
+        await transport.aclose()
+
+
+def _loopback_error(url: str) -> str | None:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme not in {"http", "https"} or host not in _LOOPBACK:
+        return "Modellisten hentes kun fra en server på denne maskine. Skriv modelnavnet selv."
+    return None
+
+
+def _down_message(source: str) -> str:
+    if source == "llama":
+        return "llama.cpp svarer ikke. Tjek adressen, eller skriv modelnavnet selv."
+    if source == "cloud":
+        return "Ollama Cloud svarede ikke. Tjek nøglen hos Ollama."
+    return "Ollama svarer ikke. Tænd Ollama-appen, og prøv igen."
+
+
+def _empty_message(source: str) -> str:
+    if source == "llama":
+        return "llama.cpp viste ingen modeller. Skriv modelnavnet selv."
+    if source == "cloud":
+        return "Ollama Cloud viste ingen modeller. Skriv modelnavnet fra ollama.com."
+    return "Ollama har ingen modeller. Kør: ollama pull qwen2.5-coder:7b"

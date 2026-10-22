@@ -20,9 +20,11 @@ service.py         loft, fallback, audit
   ├─ router.py       hylde, privat-lås, nøgler
   ├─ table.json      familie × trin. Netværket skriver ikke her
   ├─ prompts.json    systemtekst og max_tokens
-  └─ providers.py    Anthropic, OpenAI, lokal /v1
+  └─ providers.py    Anthropic, OpenAI, Ollama, llama.cpp, Ollama Cloud
          │
-         ├─ 127.0.0.1  Ollama eller llama-server
+         ├─ 127.0.0.1:11434   Ollama
+         ├─ 127.0.0.1:8080    llama.cpp
+         ├─ ollama.com        Ollama Cloud (egen nøgle)
          ├─ api.anthropic.com
          └─ api.openai.com
 ```
@@ -32,9 +34,9 @@ service.py         loft, fallback, audit
 ## Kald
 
 1. Tom tekst og for lang tekst stoppes.
-2. Nøgle-mønster tvinger `local`.
+2. Nøgle-mønster tvinger et kald på maskinen.
 3. `route` stopper her.
-4. `ask` kalder kæden. Timeout og ét retry ved 429/5xx/netværk. Fastlåst hylde eller privat kald falder ikke videre til en anden udbyder.
+4. `ask` kalder kæden. Timeout og ét retry ved 429/5xx/netværk. En fastlåst hylde falder ikke videre. Et privat kald kan prøve Ollama og derefter llama.cpp, men aldrig en cloud-API.
 5. Svaret starter med `model:` så Claude kan sige det til dig.
 
 `second_opinion` er to kald (GPT, derefter Sonnet som samler). Ikke en crew, ikke en løkke: de kaldte modeller får ikke Hylde-værktøjerne.

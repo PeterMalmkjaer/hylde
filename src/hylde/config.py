@@ -45,6 +45,21 @@ class Settings(BaseSettings):
     local_api_key: SecretStr = SecretStr("ollama")
     local_model: str | None = None
 
+    llama_base_url: str = "http://127.0.0.1:8080/v1"
+    llama_model: str | None = None
+    llama_enabled: bool = False
+
+    ollama_cloud_base_url: str = "https://ollama.com/v1"
+    ollama_cloud_model: str | None = None
+    ollama_cloud_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "HYLDE_OLLAMA_CLOUD_API_KEY",
+            "OLLAMA_API_KEY",
+            "ollama_cloud_api_key",
+        ),
+    )
+
     data_dir: Path = Field(default_factory=default_data_dir)
     table_path: Path | None = None
     log_level: str = "INFO"

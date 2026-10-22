@@ -1,6 +1,6 @@
 # Hylde
 
-MCP-server til **Claude**. Den vælger model **pr. opgave** — lokal Ollama eller llama.cpp, en billig Claude/GPT, eller en frontier-model — i stedet for at hele projektet kører på den dyreste.
+MCP-server til **Claude**. Den vælger model **pr. opgave** — Ollama og llama.cpp på maskinen, en billig Claude/GPT, Ollama Cloud, eller en frontier-model — i stedet for at hele projektet kører på den dyreste.
 
 Claude bliver i chatten. Hylde er værktøjet.
 
@@ -13,11 +13,11 @@ Sig det i almindeligt sprog. Claude skal have skillen nedenfor, så den rammer r
 | "gør det billigt" / "bare udtræk det" | ét kald til den billigste hylde der dur |
 | "svar godt på det her" | standard: mellemmodel |
 | "brug den bedste" | ét dyrt kald, ikke to |
-| "hold det på maskinen" | kun lokal model |
+| "hold det på maskinen" | kun Ollama, og llama.cpp hvis den er slået til |
 | "hvad ville du vælge?" | ingen model kaldes |
 | "få et andet bud" | to cloud-modeller, ét samlet svar |
 
-Hylder du kan navngive: `local`, `haiku`, `sonnet`, `opus`, `nano`, `mini`, `gpt`.
+Hylder du kan navngive: `local` (Ollama), `llama` (llama.cpp), `cloud` (Ollama Cloud), `haiku`, `sonnet`, `opus`, `nano`, `mini`, `gpt`. `cloud` koster hos Ollama og vælges kun, når du siger det.
 
 Id'erne i `src/hylde/data/table.json` er sat 11. oktober 2026 ud fra Anthropic og OpenAI: Haiku 4.5, Sonnet 5, Opus 5, GPT-5.4 nano/mini (de billige), GPT-6 Astra (frontier). Fable 5.1 er dyrere end Opus og er bevidst ikke standard. Ret filen når et id skifter — netværket gør det ikke selv.
 
@@ -33,8 +33,8 @@ uv run hylde
 
 Appen åbner i browseren på `http://127.0.0.1:8765`. Der kan du:
 
-1. Vælge Ollama eller llama.cpp og skrive modelnavnet.
-2. Indsætte Anthropic- og OpenAI-nøglen. Tomt felt beholder den gamle. Hylde viser ikke nøglen igen.
+1. Vælge en Ollama-model fra listen, og eventuelt slå llama.cpp til ved siden af. Begge kan være tændt.
+2. Indsætte Anthropic- og OpenAI-nøglen. Ollama Cloud har sit eget felt og sin egen nøgle. Tomt felt beholder den gamle. Hylde viser ikke nøglen igen.
 3. Trykke **Start**. Lampen bliver grøn.
 4. Kopiere Claude-konfigurationen fra appen ind i Claude Desktop og genstarte Claude.
 
@@ -44,14 +44,15 @@ Nøglerne gemmes i `~/.hylde/.env` med rettigheder kun til dig. Start bruger den
 
 Prøvekørsel i appen kalder ingen modeller. Slå den fra, når du vil have rigtige svar.
 
-Lokal model, hvis den ikke allerede kører:
+Ollama-appen (eller `ollama serve`) skal køre, før listen kan hentes. Hent en model én gang:
 
 ```bash
-ollama serve
 ollama pull qwen2.5-coder:7b
 ```
 
-llama.cpp vælges i appen. Den lytter typisk på `http://127.0.0.1:8080/v1`.
+llama.cpp kan køre samtidig, typisk på `http://127.0.0.1:8080/v1`. Slå den til i appen og sig `llama` til Claude.
+
+Ollama Cloud er et tredje sted, på ollama.com. Det kræver en Ollama API-nøgle, koster hos Ollama, og teksten forlader maskinen. Sig `cloud`. Den vælges ikke af sig selv.
 
 Vil du ikke have appen kørende, kan Claude selv starte serveren. Se `claude_desktop.stdio.example.json`. Kommandoen er `python -m hylde --mcp`. Den læser den samme fil.
 
@@ -108,7 +109,7 @@ uv run pytest
 
 - Nøgler skrives i appen. De ligger i `~/.hylde/.env`, ikke i chatten.
 - Tekst der ligner en API-nøgle bliver ikke sendt til cloud.
-- `privat` sender kun til den lokale server. Hvis den er nede, stopper Hylde — den falder ikke tilbage til GPT.
+- `privat` sender kun til Ollama og llama.cpp på maskinen. Hvis de er nede, stopper Hylde. Den falder ikke tilbage til GPT eller Ollama Cloud.
 - Audit i `~/.hylde/audit.ndjson` gemmer ikke prompten på private kald og aldrig nøgler.
 - Lokal server bør lytte på `127.0.0.1`, ikke `0.0.0.0`.
 

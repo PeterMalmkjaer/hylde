@@ -10,7 +10,8 @@ from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
 from hylde import __version__
-from hylde.config import Settings
+from hylde.config import Settings, default_data_dir
+from hylde.envfile import migrate_legacy_local
 from hylde.health import health_report
 from hylde.log import configure_logging, get_logger
 from hylde.providers import HttpxTransport
@@ -22,7 +23,10 @@ INSTRUCTIONS = """
 Hylde vælger model pr. kald, så et helt projekt ikke kører på den dyreste model.
 Værktøjer: route (gratis, intet kald), ask (ét kald), second_opinion (to dyre kald), health.
 Kald ikke Hylde for noget du selv kan svare på.
-Standard er hensigt=godt. spar = billigst. privat = kun lokal model.
+Standard er hensigt=godt. spar = billigst.
+privat = kun Ollama og llama.cpp på maskinen, aldrig cloud.
+local er Ollama. llama er llama.cpp. Begge kan være tændt.
+cloud er Ollama Cloud og kræver OLLAMA_API_KEY. Brug den kun når brugeren beder om den.
 bedst = kun når kvaliteten bærer prisen.
 second_opinion kun når brugeren beder om et andet bud.
 Sig altid hvilken model der svarede. Send aldrig API-nøgler.
@@ -38,7 +42,9 @@ class App:
 
 
 def build_app(settings: Settings | None = None) -> App:
-    settings = settings or Settings()
+    if settings is None:
+        migrate_legacy_local(default_data_dir() / ".env")
+        settings = Settings()
     configure_logging(settings.log_level)
     catalog = load_catalog(settings.table_path)
     prompts = load_prompts()
@@ -90,7 +96,7 @@ def create_server() -> MCPServer:
 
         intent: spar (billig), godt (standard), bedst (dyrt), privat (kun lokal).
         task: auto, classify, extract, draft, code, review, reason.
-        model: tom, eller et hyldenavn: local, haiku, sonnet, opus, nano, mini, gpt.
+        model: tom, eller et hyldenavn: local, llama, cloud, haiku, sonnet, opus, nano, mini, gpt.
         """
         try:
             report = current().service.route(prompt, intent=intent, task=task, model=model or None)
@@ -117,7 +123,7 @@ def create_server() -> MCPServer:
 
         Brug spar til udtræk og kladder, godt til hverdag, bedst til svær kode eller tvivl,
         privat når teksten ikke må forlade maskinen. Lad model være tom medmindre brugeren
-        navngav en hylde.
+        navngav en hylde. cloud er Ollama Cloud og koster penge der. privat bruger aldrig cloud.
         """
         try:
             report = await current().service.ask(
@@ -154,7 +160,7 @@ def create_server() -> MCPServer:
         )
     )
     async def health() -> str:
-        """Sig om den lokale model svarer, og om cloud-nøgler er sat. Viser ikke selve nøglerne."""
+        """Sig om Ollama og llama.cpp svarer, og om nøglerne er sat. Viser ikke selve nøglerne."""
         app = current()
         return await health_report(app.service.settings, app.service.catalog, app.service.transport)
 

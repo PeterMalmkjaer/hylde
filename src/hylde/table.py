@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-ProviderName = Literal["anthropic", "openai", "local"]
+ProviderName = Literal["anthropic", "openai", "local", "llama", "ollama_cloud"]
 TierName = Literal["cheap", "mid", "frontier"]
 SlotName = Literal["cheap", "balanced", "best"]
 

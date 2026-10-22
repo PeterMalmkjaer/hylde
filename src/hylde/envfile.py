@@ -19,9 +19,14 @@ FILE_KEYS = (
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
     "OPENROUTER_API_KEY",
+    "OLLAMA_API_KEY",
     "HYLDE_LOCAL_BASE_URL",
     "HYLDE_LOCAL_MODEL",
     "HYLDE_LOCAL_API_KEY",
+    "HYLDE_LLAMA_ENABLED",
+    "HYLDE_LLAMA_BASE_URL",
+    "HYLDE_LLAMA_MODEL",
+    "HYLDE_OLLAMA_CLOUD_MODEL",
     "HYLDE_DRY_RUN",
     "HYLDE_MCP_PORT",
 )
@@ -29,12 +34,15 @@ ENV_ALIASES = (
     "HYLDE_ANTHROPIC_API_KEY",
     "HYLDE_OPENAI_API_KEY",
     "HYLDE_OPENROUTER_API_KEY",
+    "HYLDE_OLLAMA_CLOUD_API_KEY",
 )
 _SECRET_FILES = {
     "anthropic_api_key": "ANTHROPIC_API_KEY",
     "openai_api_key": "OPENAI_API_KEY",
     "openrouter_api_key": "OPENROUTER_API_KEY",
+    "ollama_cloud_api_key": "OLLAMA_API_KEY",
 }
+_MODEL_RE = re.compile(r"[A-Za-z0-9_.:/-]{1,160}")
 _TRUE = {"1", "true", "ja", "yes", "on"}
 
 
@@ -84,9 +92,34 @@ def write_values(path: Path, values: dict[str, str]) -> None:
     os.chmod(path, 0o600)
 
 
-def public_view(path: Path) -> dict[str, object]:
+def acceptable_model(text: str) -> bool:
+    return ".." not in text and "//" not in text and _MODEL_RE.fullmatch(text) is not None
+
+
+def migrate_legacy_local(path: Path) -> None:
+    """Gammel radio gemte llama.cpp i Ollama-feltet. Flyt den over, én gang."""
     values = read_values(path)
-    url = values.get("HYLDE_LOCAL_BASE_URL", OLLAMA_URL).strip() or OLLAMA_URL
+    if not values:
+        return
+    if "HYLDE_LLAMA_ENABLED" in values or "HYLDE_LLAMA_BASE_URL" in values:
+        return
+    stored = values.get("HYLDE_LOCAL_BASE_URL", "").strip()
+    if kind_for(stored) != "llama":
+        return
+    updated = dict(values)
+    updated["HYLDE_LLAMA_BASE_URL"] = stored.rstrip("/")
+    updated["HYLDE_LLAMA_ENABLED"] = "1"
+    model = values.get("HYLDE_LOCAL_MODEL", "").strip()
+    if model:
+        updated["HYLDE_LLAMA_MODEL"] = model
+    updated.pop("HYLDE_LOCAL_MODEL", None)
+    updated["HYLDE_LOCAL_BASE_URL"] = OLLAMA_URL
+    write_values(path, updated)
+
+
+def public_view(path: Path) -> dict[str, object]:
+    migrate_legacy_local(path)
+    values = read_values(path)
     local_key = values.get("HYLDE_LOCAL_API_KEY", "").strip()
     return {
         "anthropic_set": _filled(values.get("ANTHROPIC_API_KEY")),
@@ -95,9 +128,14 @@ def public_view(path: Path) -> dict[str, object]:
         "openai_in_environment": _env_set("OPENAI_API_KEY", "HYLDE_OPENAI_API_KEY"),
         "openrouter_set": _filled(values.get("OPENROUTER_API_KEY")),
         "openrouter_in_environment": _env_set("OPENROUTER_API_KEY", "HYLDE_OPENROUTER_API_KEY"),
-        "local_kind": kind_for(url),
-        "local_base_url": url,
-        "local_model": values.get("HYLDE_LOCAL_MODEL", "").strip(),
+        "ollama_cloud_set": _filled(values.get("OLLAMA_API_KEY")),
+        "ollama_cloud_in_environment": _env_set("OLLAMA_API_KEY", "HYLDE_OLLAMA_CLOUD_API_KEY"),
+        "ollama_cloud_model": values.get("HYLDE_OLLAMA_CLOUD_MODEL", "").strip(),
+        "ollama_base_url": values.get("HYLDE_LOCAL_BASE_URL", OLLAMA_URL).strip() or OLLAMA_URL,
+        "ollama_model": values.get("HYLDE_LOCAL_MODEL", "").strip(),
+        "llama_enabled": values.get("HYLDE_LLAMA_ENABLED", "").strip().lower() in _TRUE,
+        "llama_base_url": values.get("HYLDE_LLAMA_BASE_URL", LLAMA_URL).strip() or LLAMA_URL,
+        "llama_model": values.get("HYLDE_LLAMA_MODEL", "").strip(),
         "local_api_key_set": bool(local_key) and local_key != "ollama",
         "dry_run": values.get("HYLDE_DRY_RUN", "").strip().lower() in _TRUE,
         "mcp_port": _stored_port(values.get("HYLDE_MCP_PORT")),
@@ -107,28 +145,28 @@ def public_view(path: Path) -> dict[str, object]:
 def apply_form(path: Path, payload: dict[str, object]) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise UserError("Kunne ikke læse formularen.")
+    migrate_legacy_local(path)
     current = read_values(path)
     updated = dict(current)
     for field, file_key in _SECRET_FILES.items():
         _apply_secret(updated, file_key, payload, field)
-    kind = payload.get("local_kind", "ollama")
-    if kind not in {"ollama", "llama", "custom"}:
-        raise UserError("Vælg Ollama, llama.cpp eller en egen adresse.")
-    if kind == "ollama":
-        updated["HYLDE_LOCAL_BASE_URL"] = OLLAMA_URL
-    elif kind == "llama":
-        updated["HYLDE_LOCAL_BASE_URL"] = LLAMA_URL
-    else:
-        updated["HYLDE_LOCAL_BASE_URL"] = _http_url(payload.get("local_base_url"))
-    model = _optional_text(payload.get("local_model"), "Modelnavnet")
-    if model:
-        if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,120}", model):
-            raise UserError(
-                "Modelnavnet må kun indeholde bogstaver, tal, punktum, kolon og bindestreg."
-            )
-        updated["HYLDE_LOCAL_MODEL"] = model
-    else:
-        updated.pop("HYLDE_LOCAL_MODEL", None)
+    updated["HYLDE_LOCAL_BASE_URL"] = _url_or_default(payload.get("ollama_base_url"), OLLAMA_URL)
+    _store_model(updated, "HYLDE_LOCAL_MODEL", payload.get("ollama_model"), required=False)
+    llama_enabled = _flag(payload.get("llama_enabled", False), "llama.cpp")
+    updated["HYLDE_LLAMA_ENABLED"] = "1" if llama_enabled else "0"
+    updated["HYLDE_LLAMA_BASE_URL"] = _url_or_default(payload.get("llama_base_url"), LLAMA_URL)
+    _store_model(
+        updated,
+        "HYLDE_LLAMA_MODEL",
+        payload.get("llama_model"),
+        required=llama_enabled,
+    )
+    _store_model(
+        updated,
+        "HYLDE_OLLAMA_CLOUD_MODEL",
+        payload.get("ollama_cloud_model"),
+        required=False,
+    )
     if payload.get("local_api_key_clear") is True:
         updated.pop("HYLDE_LOCAL_API_KEY", None)
     else:
@@ -145,22 +183,32 @@ def apply_form(path: Path, payload: dict[str, object]) -> dict[str, object]:
 
 
 def runtime_settings(data_dir: Path) -> Settings:
-    values = read_values(data_dir / ".env")
+    path = data_dir / ".env"
+    migrate_legacy_local(path)
+    values = read_values(path)
     kwargs: dict[str, object] = {
         "local_base_url": values.get("HYLDE_LOCAL_BASE_URL", OLLAMA_URL) or OLLAMA_URL,
+        "llama_base_url": values.get("HYLDE_LLAMA_BASE_URL", LLAMA_URL) or LLAMA_URL,
+        "llama_enabled": values.get("HYLDE_LLAMA_ENABLED", "").strip().lower() in _TRUE,
         "dry_run": values.get("HYLDE_DRY_RUN", "").strip().lower() in _TRUE,
     }
     for field, file_key in (
         ("anthropic_api_key", "ANTHROPIC_API_KEY"),
         ("openai_api_key", "OPENAI_API_KEY"),
         ("openrouter_api_key", "OPENROUTER_API_KEY"),
+        ("ollama_cloud_api_key", "OLLAMA_API_KEY"),
     ):
         text = values.get(file_key, "").strip()
         if text:
             kwargs[field] = SecretStr(text)
-    model = values.get("HYLDE_LOCAL_MODEL", "").strip()
-    if model:
-        kwargs["local_model"] = model
+    for field, file_key in (
+        ("local_model", "HYLDE_LOCAL_MODEL"),
+        ("llama_model", "HYLDE_LLAMA_MODEL"),
+        ("ollama_cloud_model", "HYLDE_OLLAMA_CLOUD_MODEL"),
+    ):
+        model = values.get(file_key, "").strip()
+        if model:
+            kwargs[field] = model
     local_key = values.get("HYLDE_LOCAL_API_KEY", "").strip()
     if local_key:
         kwargs["local_api_key"] = SecretStr(local_key)
@@ -169,6 +217,7 @@ def runtime_settings(data_dir: Path) -> Settings:
 
 def child_env(data_dir: Path) -> dict[str, str]:
     """Miljø til MCP-processen. Filen vinder over nøgler i forældre-processen."""
+    migrate_legacy_local(data_dir / ".env")
     env = dict(os.environ)
     for key in (*FILE_KEYS, *ENV_ALIASES, "HYLDE_DISABLE_DOTENV"):
         env.pop(key, None)
@@ -210,6 +259,34 @@ def _apply_secret(
     if any(character.isspace() for character in text) or len(text) > 400:
         raise UserError("Nøglen ser forkert ud. Indsæt kun selve nøglen, uden mellemrum.")
     updated[file_key] = text
+
+
+def _store_model(updated: dict[str, str], file_key: str, value: object, *, required: bool) -> None:
+    model = _optional_text(value, "Modelnavnet")
+    if not model:
+        if required:
+            raise UserError("Skriv modelnavnet til llama.cpp, eller slå den fra.")
+        updated.pop(file_key, None)
+        return
+    if not acceptable_model(model):
+        raise UserError(
+            "Modelnavnet må kun indeholde bogstaver, tal, punktum, kolon, skråstreg og bindestreg."
+        )
+    updated[file_key] = model
+
+
+def _flag(value: object, label: str) -> bool:
+    if value is None or value is False:
+        return False
+    if value is True:
+        return True
+    raise UserError(f"{label} skal være til eller fra.")
+
+
+def _url_or_default(value: object, default: str) -> str:
+    if value is None or value == "":
+        return default
+    return _http_url(value)
 
 
 def _optional_text(value: object, label: str) -> str:

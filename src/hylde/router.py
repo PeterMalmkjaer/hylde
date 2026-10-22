@@ -20,6 +20,8 @@ INTENTS = {
     "private": "private",
 }
 
+ON_MACHINE = frozenset({"local", "llama"})
+
 SECRET = re.compile(
     r"(sk-ant-[A-Za-z0-9_\-]{8,}|sk-or-v1-[A-Za-z0-9_\-]{8,}"
     r"|sk-[A-Za-z0-9]{20,}|BEGIN (?:RSA |OPENSSH )?PRIVATE KEY|AKIA[0-9A-Z]{16})"
@@ -57,12 +59,22 @@ def looks_secret(prompt: str) -> bool:
 def resolve_model(settings: Settings, shelf_key: str, shelf: Shelf) -> Shelf:
     if shelf_key == "local" and settings.local_model:
         return shelf.model_copy(update={"model": settings.local_model})
+    if shelf_key == "llama" and settings.llama_model:
+        return shelf.model_copy(update={"model": settings.llama_model})
+    if shelf_key == "cloud" and settings.ollama_cloud_model:
+        return shelf.model_copy(update={"model": settings.ollama_cloud_model})
     return shelf
 
 
 def available(settings: Settings, shelf: Shelf) -> bool:
     if shelf.provider == "local":
         return bool(settings.local_base_url.strip())
+    if shelf.provider == "llama":
+        return settings.llama_enabled and bool((settings.llama_model or "").strip())
+    if shelf.provider == "ollama_cloud":
+        return settings.secret(settings.ollama_cloud_api_key) is not None and bool(
+            (settings.ollama_cloud_model or "").strip()
+        )
     if shelf.provider == "anthropic":
         return settings.secret(settings.anthropic_api_key) is not None
     if shelf.provider == "openai":
@@ -85,8 +97,11 @@ def choose(
     task_name = task
 
     if private:
-        chain = ("local",)
-        why = "Privat: kun den lokale model. Intet sendes til en cloud-API."
+        chain = ("local", "llama")
+        why = (
+            "Privat: kun modeller på maskinen (Ollama, derefter llama.cpp). "
+            "Intet sendes til en cloud-API."
+        )
     elif model and model.strip():
         pinned = True
         key = model.strip()
@@ -105,10 +120,13 @@ def choose(
         task_name = task
 
     if private:
-        local = tuple(key for key in chain if catalog.shelves[key].provider == "local")
+        local = tuple(key for key in chain if catalog.shelves[key].provider in ON_MACHINE)
         chain = local or ("local",)
         if not pinned:
-            why = "Privat: kun den lokale model. Intet sendes til en cloud-API."
+            why = (
+                "Privat: kun modeller på maskinen (Ollama, derefter llama.cpp). "
+                "Intet sendes til en cloud-API."
+            )
 
     picked = _first_available(catalog, settings, chain)
     if picked is None:
@@ -146,7 +164,7 @@ def dialogue_pair(catalog: Catalog, settings: Settings) -> tuple[Choice, Choice]
         model=catalog.dialogue.right,
         force_private=False,
     )
-    if left.shelf.provider == "local" or right.shelf.provider == "local":
+    if left.shelf.provider in ON_MACHINE or right.shelf.provider in ON_MACHINE:
         raise RouteError("Andet bud kræver to cloud-modeller. Sæt både Anthropic- og OpenAI-nøgle.")
     if left.shelf_key == right.shelf_key:
         raise RouteError("Andet bud har ikke to forskellige hylder lige nu.")
@@ -170,5 +188,11 @@ def _missing_message(catalog: Catalog, settings: Settings, chain: tuple[str, ...
         bits.append("OPENAI_API_KEY")
     if "local" in needs and not settings.local_base_url.strip():
         bits.append("HYLDE_LOCAL_BASE_URL")
+    if "llama" in needs and not (settings.llama_enabled and (settings.llama_model or "").strip()):
+        bits.append("llama.cpp (slå den til og vælg model)")
+    if "ollama_cloud" in needs and not settings.secret(settings.ollama_cloud_api_key):
+        bits.append("OLLAMA_API_KEY")
+    elif "ollama_cloud" in needs and not (settings.ollama_cloud_model or "").strip():
+        bits.append("Ollama Cloud-model")
     detail = ", ".join(bits) if bits else "en tilgængelig model"
     return f"Ingen model i kæden er sat op ({detail}). Se README: nøgler ligger i ~/.hylde/.env."

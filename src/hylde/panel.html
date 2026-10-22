@@ -43,7 +43,7 @@
     .lamp.on { background: var(--green); color: var(--green-ink); }
     .actions, .row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
     .actions { margin: 1.25rem 0; }
-    button, .choice {
+    button {
       font: inherit;
       border-radius: 0.7rem;
       border: 1px solid var(--line);
@@ -82,10 +82,9 @@
       border: 1px solid var(--line);
       background: #fff;
     }
-    .choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.45rem; margin-top: 0.4rem; }
-    .choice { text-align: center; }
-    .choice input { position: absolute; opacity: 0; pointer-events: none; }
-    .choice:has(input:checked) { border-color: var(--green); box-shadow: inset 0 0 0 1px var(--green); }
+    .model-row { display: flex; gap: 0.5rem; align-items: center; }
+    .model-row input { flex: 1; }
+    .model-row button { white-space: nowrap; }
     .check { display: flex; gap: 0.55rem; align-items: flex-start; font-weight: 500; margin-top: 0.8rem; }
     .check input { margin-top: 0.25rem; }
     pre {
@@ -99,7 +98,7 @@
     details { margin-top: 0.4rem; }
     summary { cursor: pointer; color: var(--muted); }
     #health, #log { white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 0.86rem; }
-    @media (max-width: 640px) { .choices { grid-template-columns: 1fr; } }
+    @media (max-width: 640px) { .model-row { flex-direction: column; align-items: stretch; } }
   </style>
 </head>
 <body>
@@ -162,18 +161,50 @@
     </section>
 
     <section>
-      <h2>Lokal model</h2>
-      <p class="hint">Gratis og privat. Vælg den server du allerede har kørende.</p>
-      <div class="choices">
-        <label class="choice"><input type="radio" name="local_kind" value="ollama" checked> Ollama</label>
-        <label class="choice"><input type="radio" name="local_kind" value="llama"> llama.cpp</label>
-        <label class="choice"><input type="radio" name="local_kind" value="custom"> Egen adresse</label>
+      <h2>Ollama</h2>
+      <p class="hint">På maskinen, gratis. Kan køre samtidig med llama.cpp. Sig local til Claude, eller lad Hylde vælge.</p>
+      <label for="ollama_base_url">Adresse</label>
+      <input id="ollama_base_url" name="ollama_base_url" type="text" autocomplete="off" spellcheck="false" value="http://127.0.0.1:11434/v1">
+      <label for="ollama_model">Model</label>
+      <div class="model-row">
+        <input id="ollama_model" name="ollama_model" type="text" list="ollama_models" autocomplete="off" spellcheck="false" placeholder="qwen2.5-coder:7b">
+        <button type="button" id="refresh_ollama">Hent</button>
       </div>
-      <label for="local_base_url">Adresse</label>
-      <input id="local_base_url" name="local_base_url" type="text" autocomplete="off" spellcheck="false" value="http://127.0.0.1:11434/v1">
-      <label for="local_model">Modelnavn</label>
-      <input id="local_model" name="local_model" type="text" autocomplete="off" spellcheck="false" placeholder="qwen2.5-coder:7b">
-      <p class="hint">Tomt felt bruger qwen2.5-coder:7b. Skift det, når du har hentet en anden model.</p>
+      <datalist id="ollama_models"></datalist>
+      <p class="hint" id="ollama_hint">Listen viser modellerne Ollama har hentet. Tomt felt bruger qwen2.5-coder:7b.</p>
+    </section>
+
+    <section>
+      <h2>llama.cpp</h2>
+      <p class="hint">Også på maskinen. Slå den til, hvis du vil bruge den samtidig med Ollama. Sig llama til Claude.</p>
+      <label class="check"><input id="llama_enabled" name="llama_enabled" type="checkbox"> Brug også llama.cpp</label>
+      <label for="llama_base_url">Adresse</label>
+      <input id="llama_base_url" name="llama_base_url" type="text" autocomplete="off" spellcheck="false" value="http://127.0.0.1:8080/v1">
+      <label for="llama_model">Model</label>
+      <div class="model-row">
+        <input id="llama_model" name="llama_model" type="text" list="llama_models" autocomplete="off" spellcheck="false" placeholder="modelnavn">
+        <button type="button" id="refresh_llama">Hent</button>
+      </div>
+      <datalist id="llama_models"></datalist>
+      <p class="hint" id="llama_hint">Listen hentes fra llama.cpp, hvis den kører. Ellers skriver du navnet selv.</p>
+    </section>
+
+    <section>
+      <h2>Ollama Cloud</h2>
+      <p class="hint">Ollama Cloud på ollama.com. Det er ikke Anthropic, og det kører ikke på maskinen. Det koster hos Ollama. Hylde vælger den ikke selv: sig cloud.</p>
+      <div class="field-head">
+        <label for="ollama_cloud_api_key">Ollama API-nøgle</label>
+        <span class="badge" id="ollama_cloud_badge"></span>
+      </div>
+      <input id="ollama_cloud_api_key" name="ollama_cloud_api_key" type="password" autocomplete="off" spellcheck="false">
+      <label class="check"><input id="ollama_cloud_api_key_clear" type="checkbox"> Fjern den gemte Ollama Cloud-nøgle</label>
+      <label for="ollama_cloud_model">Cloud-model</label>
+      <div class="model-row">
+        <input id="ollama_cloud_model" name="ollama_cloud_model" type="text" list="cloud_models" autocomplete="off" spellcheck="false" placeholder="gem nøglen, og hent listen">
+        <button type="button" id="refresh_cloud">Hent</button>
+      </div>
+      <datalist id="cloud_models"></datalist>
+      <p class="hint" id="cloud_hint">Listen hentes først, når nøglen er gemt. Hylde sender den ikke tilbage til siden.</p>
     </section>
 
     <section>
@@ -189,7 +220,7 @@
           <span class="badge" id="local_api_badge"></span>
         </div>
         <input id="local_api_key" name="local_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="ollama">
-        <p class="hint">Ollama behøver ingen. llama.cpp bruger ofte heller ingen.</p>
+        <p class="hint">Ollama og llama.cpp behøver som regel ingen. Ollama Cloud har sin egen nøgle ovenfor.</p>
         <label class="check"><input id="local_api_key_clear" type="checkbox"> Nulstil den lokale nøgle</label>
       </details>
     </section>
@@ -259,31 +290,22 @@ function applyStatus(data) {
 }
 
 function fillForm(settings) {
-  const kind = settings.local_kind || "ollama";
-  document.querySelectorAll('input[name="local_kind"]').forEach((input) => {
-    input.checked = input.value === kind;
-  });
-  $("local_base_url").value = settings.local_base_url || "";
-  $("local_model").value = settings.local_model || "";
+  $("ollama_base_url").value = settings.ollama_base_url || "http://127.0.0.1:11434/v1";
+  $("ollama_model").value = settings.ollama_model || "";
+  $("llama_enabled").checked = Boolean(settings.llama_enabled);
+  $("llama_base_url").value = settings.llama_base_url || "http://127.0.0.1:8080/v1";
+  $("llama_model").value = settings.llama_model || "";
+  $("ollama_cloud_model").value = settings.ollama_cloud_model || "";
   $("dry_run").checked = Boolean(settings.dry_run);
   $("mcp_port").value = String(settings.mcp_port || 8766);
-  syncAddress();
   badge("anthropic_badge", settings, "anthropic");
   badge("openai_badge", settings, "openai");
   badge("openrouter_badge", settings, "openrouter");
-  badge("local_api_badge", settings, "local_api");
-}
-
-function syncAddress() {
-  const kind = document.querySelector('input[name="local_kind"]:checked').value;
-  const field = $("local_base_url");
-  field.disabled = kind !== "custom";
-  if (kind === "ollama") field.value = "http://127.0.0.1:11434/v1";
-  if (kind === "llama") field.value = "http://127.0.0.1:8080/v1";
+  badge("ollama_cloud_badge", settings, "ollama_cloud");
+  badge("local_api_badge", settings, "local_api_key");
 }
 
 function payload() {
-  const kind = document.querySelector('input[name="local_kind"]:checked').value;
   return {
     anthropic_api_key: $("anthropic_api_key").value,
     anthropic_api_key_clear: $("anthropic_api_key_clear").checked,
@@ -291,9 +313,14 @@ function payload() {
     openai_api_key_clear: $("openai_api_key_clear").checked,
     openrouter_api_key: $("openrouter_api_key").value,
     openrouter_api_key_clear: $("openrouter_api_key_clear").checked,
-    local_kind: kind,
-    local_base_url: $("local_base_url").value,
-    local_model: $("local_model").value,
+    ollama_cloud_api_key: $("ollama_cloud_api_key").value,
+    ollama_cloud_api_key_clear: $("ollama_cloud_api_key_clear").checked,
+    ollama_base_url: $("ollama_base_url").value,
+    ollama_model: $("ollama_model").value,
+    llama_enabled: $("llama_enabled").checked,
+    llama_base_url: $("llama_base_url").value,
+    llama_model: $("llama_model").value,
+    ollama_cloud_model: $("ollama_cloud_model").value,
     local_api_key: $("local_api_key").value,
     local_api_key_clear: $("local_api_key_clear").checked,
     dry_run: $("dry_run").checked,
@@ -302,12 +329,49 @@ function payload() {
 }
 
 function clearSecrets() {
-  ["anthropic_api_key", "openai_api_key", "openrouter_api_key", "local_api_key"].forEach((id) => {
+  ["anthropic_api_key", "openai_api_key", "openrouter_api_key", "ollama_cloud_api_key", "local_api_key"].forEach((id) => {
     $(id).value = "";
   });
-  document.querySelectorAll('input[type="checkbox"]').forEach((box) => {
-    if (box.id !== "dry_run") box.checked = false;
+  ["anthropic_api_key_clear", "openai_api_key_clear", "openrouter_api_key_clear", "ollama_cloud_api_key_clear", "local_api_key_clear"].forEach((id) => {
+    $(id).checked = false;
   });
+}
+
+function fillList(id, names) {
+  const list = $(id);
+  list.replaceChildren();
+  (names || []).forEach((name) => {
+    const option = document.createElement("option");
+    option.value = name;
+    list.appendChild(option);
+  });
+}
+
+async function loadModels(source, listId, hintId) {
+  const hint = $(hintId);
+  try {
+    const response = await fetch("/api/models?source=" + encodeURIComponent(source));
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Kunne ikke hente modeller.");
+    const names = data.models || [];
+    fillList(listId, names);
+    if (data.error) hint.textContent = data.error;
+    else {
+      let text = names.length + (names.length === 1 ? " model fundet." : " modeller fundet.");
+      if (source === "ollama" && names.some((name) => name.endsWith("-cloud") || name.endsWith(":cloud"))) {
+        text += " Navne der ender på -cloud forlader maskinen.";
+      }
+      hint.textContent = text;
+    }
+  } catch (error) {
+    hint.textContent = error.message;
+  }
+}
+
+function loadAllModels() {
+  loadModels("ollama", "ollama_models", "ollama_hint");
+  loadModels("llama", "llama_models", "llama_hint");
+  loadModels("cloud", "cloud_models", "cloud_hint");
 }
 
 async function post(path, body) {
@@ -328,11 +392,13 @@ async function refresh() {
   if (!filled) {
     fillForm(data.settings);
     filled = true;
+    loadAllModels();
   } else {
     badge("anthropic_badge", data.settings, "anthropic");
     badge("openai_badge", data.settings, "openai");
     badge("openrouter_badge", data.settings, "openrouter");
-    badge("local_api_badge", data.settings, "local_api");
+    badge("ollama_cloud_badge", data.settings, "ollama_cloud");
+    badge("local_api_badge", data.settings, "local_api_key");
   }
 }
 
@@ -340,6 +406,7 @@ async function save() {
   const data = await post("/api/settings", payload());
   fillForm(data.settings);
   clearSecrets();
+  loadAllModels();
   say(data.running ? "Gemt. Tryk Genstart, så de nye indstillinger bruges." : "Gemt.");
   return data;
 }
@@ -348,8 +415,14 @@ $("form").addEventListener("submit", (event) => {
   event.preventDefault();
   save().then(refresh).catch((error) => say(error.message, true));
 });
-document.querySelectorAll('input[name="local_kind"]').forEach((input) => {
-  input.addEventListener("change", syncAddress);
+$("refresh_ollama").addEventListener("click", () => {
+  loadModels("ollama", "ollama_models", "ollama_hint");
+});
+$("refresh_llama").addEventListener("click", () => {
+  loadModels("llama", "llama_models", "llama_hint");
+});
+$("refresh_cloud").addEventListener("click", () => {
+  loadModels("cloud", "cloud_models", "cloud_hint");
 });
 $("start").addEventListener("click", () => {
   say("Starter…");

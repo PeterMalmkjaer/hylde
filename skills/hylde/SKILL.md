@@ -1,8 +1,8 @@
 ---
 name: hylde
 description: >-
-  Vælg LLM pr. opgave via Hylde-MCP (lokal Ollama/llama.cpp, billig Claude/GPT,
-  eller en frontier-model). Brug når brugeren vil spare, holde noget privat,
+  Vælg LLM pr. opgave via Hylde-MCP (Ollama og llama.cpp på maskinen, billig
+  Claude/GPT, Ollama Cloud eller en frontier-model). Brug når brugeren vil spare, holde noget privat,
   navngive en model, eller have et andet bud. Brug den ikke til spørgsmål
   Claude selv kan svare på.
 ---
@@ -23,12 +23,14 @@ Kan du svare selv, så gør det. Hylde koster tid og nogle gange penge.
 | almindeligt godt svar | `ask` | `godt` (standard) |
 | det skal være det bedste, svær kode, vigtig afgørelse | `ask` | `bedst` |
 | privat, lokalt, må ikke sendes ud | `ask` | `privat` |
-| brug haiku / mini / opus / local | `ask` med `model` | hyldenavn |
+| brug haiku / mini / opus / local / llama / cloud | `ask` med `model` | hyldenavn |
 | hvad ville du vælge, uden at køre det | `route` | samme som ask |
 | andet bud, er du sikker, spørg også GPT | `second_opinion` | kun én gang |
 | virker den lokale model | `health` | — |
 
-Hylder: `local`, `haiku`, `sonnet`, `opus`, `nano`, `mini`, `gpt`.
+Hylder: `local` (Ollama), `llama` (llama.cpp), `cloud` (Ollama Cloud), `haiku`, `sonnet`, `opus`, `nano`, `mini`, `gpt`.
+
+`local` og `llama` kan begge være tændt. Uden et hyldenavn bruger Hylde Ollama til det billige. Sig `llama`, når svaret skal komme fra llama.cpp. Sig `cloud` kun når brugeren beder om Ollama Cloud på ollama.com: det koster hos Ollama, og teksten forlader maskinen. `cloud` er ikke Anthropic.
 
 `task` må være `auto`. Sæt den kun hvis brugeren er tydelig (`code`, `review`, `extract`, `reason`, `draft`, `classify`).
 
@@ -36,7 +38,7 @@ Hylder: `local`, `haiku`, `sonnet`, `opus`, `nano`, `mini`, `gpt`.
 
 - Nøgler, tokens og private keys sendes ikke. Hvis teksten ligner en nøgle, så sig det til brugeren i stedet for at kalde cloud.
 - Bed aldrig om en API-nøgle i chatten. Mangler en nøgle, så sig at den skal ind i Hylde-appen, og at Hylde skal være startet.
-- `privat` vinder over en navngiven cloud-model.
+- `privat` vinder over en navngiven cloud-model. Den må kun bruge Ollama og llama.cpp.
 - `second_opinion` er to betalte frontier-kald. Ikke standard. Ikke til "hej".
 - Sig i svaret **hvilken model** Hylde brugte (feltet `model:`).
 - Hvis Hylde returnerer "stoppede" eller "kunne ikke vælge", så forklar det næste skridt (nøgle i `~/.hylde/.env`, eller start Ollama). Opfind ikke et svar fra en model der ikke kørte.

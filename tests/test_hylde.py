@@ -11,6 +11,7 @@ from pydantic import SecretStr
 
 from hylde.config import Settings
 from hylde.heuristics import guess_task
+from hylde.providers import parse_model_names
 from hylde.router import RouteError, choose, looks_secret
 from hylde.service import Service
 from hylde.table import load_catalog, load_prompts
@@ -98,6 +99,11 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "HYLDE_OPENROUTER_API_KEY",
         "HYLDE_DRY_RUN",
         "HYLDE_LOCAL_MODEL",
+        "HYLDE_LLAMA_ENABLED",
+        "HYLDE_LLAMA_MODEL",
+        "HYLDE_OLLAMA_CLOUD_MODEL",
+        "OLLAMA_API_KEY",
+        "HYLDE_OLLAMA_CLOUD_API_KEY",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -197,6 +203,43 @@ def test_short_note_stays_on_cheap_haiku(tmp_path) -> None:
     assert report.shelf_key == "haiku"
 
 
+def test_token_limit_field_follows_provider(tmp_path) -> None:
+    seen: list[tuple[str, dict[str, object]]] = []
+
+    def handler(url: str, body: dict[str, object]) -> FakeResponse:
+        seen.append((url, body))
+        if "anthropic" in url:
+            return ok_anthropic("a")
+        return ok_openai("o")
+
+    app = service(
+        tmp_path,
+        FakeTransport(handler),
+        anthropic_api_key=SecretStr("sk-ant-test"),
+        openai_api_key=SecretStr("sk-test"),
+        llama_enabled=True,
+        llama_model="local-gguf",
+        ollama_cloud_api_key=SecretStr("ollama-test-key"),
+        ollama_cloud_model="gemma4:31b",
+    )
+    catalog = load_catalog()
+    for key, shelf in catalog.shelves.items():
+        asyncio.run(app._once(shelf, system="sys", prompt=f"opgave {key}", kind=shelf.tier))
+    openai = [body for url, body in seen if "openai.com" in url]
+    local = [body for url, body in seen if "11434" in url]
+    llama = [body for url, body in seen if "8080" in url]
+    cloud = [body for url, body in seen if "ollama.com" in url]
+    anthropic = [body for url, body in seen if "anthropic" in url]
+    assert len(openai) == 3
+    assert len(local) == 1
+    assert len(llama) == 1
+    assert len(cloud) == 1
+    assert len(anthropic) == 3
+    assert all("max_completion_tokens" in body and "max_tokens" not in body for body in openai)
+    for body in (*local, *llama, *cloud, *anthropic):
+        assert "max_tokens" in body and "max_completion_tokens" not in body
+
+
 def test_ask_posts_to_anthropic_for_balanced_draft(tmp_path) -> None:
     def handler(url: str, body: dict[str, object]) -> FakeResponse:
         assert "anthropic" in url
@@ -224,6 +267,106 @@ def test_private_audit_drops_prompt(tmp_path) -> None:
     line = json.loads((tmp_path / "audit.ndjson").read_text(encoding="utf-8"))
     assert "prompt" not in line
     assert "11434" in transport.posts[0]
+
+
+def test_cloud_is_opt_in_and_never_private(tmp_path) -> None:
+    catalog = load_catalog()
+    with pytest.raises(RouteError):
+        choose(
+            catalog,
+            settings(tmp_path),
+            task="reason",
+            intent="godt",
+            model="cloud",
+            force_private=False,
+        )
+    choice = choose(
+        catalog,
+        settings(
+            tmp_path,
+            ollama_cloud_api_key=SecretStr("ollama-test-key"),
+            ollama_cloud_model="gemma4:31b",
+        ),
+        task="reason",
+        intent="godt",
+        model="cloud",
+        force_private=False,
+    )
+    assert choice.shelf_key == "cloud"
+    assert choice.shelf.provider == "ollama_cloud"
+    assert choice.shelf.model == "gemma4:31b"
+    private = choose(
+        catalog,
+        settings(
+            tmp_path,
+            ollama_cloud_api_key=SecretStr("ollama-test-key"),
+            ollama_cloud_model="gemma4:31b",
+        ),
+        task="reason",
+        intent="privat",
+        model="cloud",
+        force_private=False,
+    )
+    assert private.private
+    assert private.shelf.provider == "local"
+
+
+def test_llama_can_be_named_while_ollama_stays_up(tmp_path) -> None:
+    choice = choose(
+        load_catalog(),
+        settings(tmp_path, llama_enabled=True, llama_model="my-gguf"),
+        task="code",
+        intent="spar",
+        model="llama",
+        force_private=False,
+    )
+    assert choice.shelf_key == "llama"
+    assert choice.shelf.model == "my-gguf"
+    default = choose(
+        load_catalog(),
+        settings(tmp_path, llama_enabled=True, llama_model="my-gguf"),
+        task="classify",
+        intent="spar",
+        model=None,
+        force_private=False,
+    )
+    assert default.shelf_key == "local"
+
+
+def test_private_tries_llama_when_ollama_fails(tmp_path) -> None:
+    def handler(url: str, body: dict[str, object]) -> FakeResponse:
+        if "11434" in url:
+            return FakeResponse(404, {"error": {"message": "model not found"}})
+        assert "8080" in url
+        assert body["model"] == "my-gguf"
+        assert "max_tokens" in body
+        return ok_openai("fra llama")
+
+    app = service(tmp_path, FakeTransport(handler), llama_enabled=True, llama_model="my-gguf")
+    report = asyncio.run(app.ask("hemmelig plan", intent="privat"))
+    assert report.provider == "llama"
+    assert report.text == "fra llama"
+    assert report.private
+
+
+def test_model_names_come_from_ollama_tags() -> None:
+    names = parse_model_names(
+        {
+            "models": [
+                {"name": "qwen2.5-coder:7b"},
+                {"name": "qwen2.5-coder:7b"},
+                {"name": "../evil"},
+                {"model": "gemma4:31b"},
+            ]
+        },
+        shape="ollama",
+    )
+    assert names == ["qwen2.5-coder:7b", "gemma4:31b"]
+    openai_names = parse_model_names(
+        {"data": [{"id": "local-gguf"}, {"id": "has space"}]},
+        shape="openai",
+    )
+    assert openai_names == ["local-gguf"]
 
 
 def test_provider_error_falls_through_once(tmp_path) -> None:
